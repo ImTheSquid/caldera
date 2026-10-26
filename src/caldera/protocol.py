@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import date
 from enum import Enum
 
-VERSION = 2
+VERSION = 3
 BAUD = 250000
 MAX_LINE = 80  # firmware line buffer, excluding the newline
 WINDOW = 500  # unacknowledged bytes in flight; firmware RX buffer is 512
@@ -39,7 +39,20 @@ class BrightnessButton:
     kind: str  # "DIM" or "BRIGHT"
 
 
-Event = Touch | BrightnessButton
+@dataclass(frozen=True)
+class Contact:
+    """Host mode only: a finger is on this day pad, sent on every pad change."""
+
+    month: int
+    day: int
+
+
+@dataclass(frozen=True)
+class Release:
+    """Host mode only: the finger left the day pads."""
+
+
+Event = Touch | BrightnessButton | Contact | Release
 
 
 def index(key: Key) -> tuple[int, int]:
@@ -135,6 +148,10 @@ def parse_event(line: str) -> Event:
             return Touch(int(m) + 1, int(d) + 1)
         case ["EV", "B", kind]:
             return BrightnessButton(kind)
+        case ["EV", "D", m, d]:
+            return Contact(int(m) + 1, int(d) + 1)
+        case ["EV", "U"]:
+            return Release()
     raise CalendarError(f"bad event {line!r}")
 
 

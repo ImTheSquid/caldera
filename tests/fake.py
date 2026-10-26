@@ -4,7 +4,7 @@ import queue
 
 
 class FakeDevice:
-    def __init__(self, banner: str = "READY EDC 2"):
+    def __init__(self, banner: str = "READY EDC 3"):
         self.out: queue.Queue[bytes] = queue.Queue()
         self.leds = [0] * 12
         self.saved = [0] * 12
@@ -46,7 +46,7 @@ class FakeDevice:
     def handle(self, args: list[str]) -> str:
         match args:
             case ["PING"]:
-                return "OK EDC 2"
+                return "OK EDC 3"
             case ["PING", token]:
                 return f"OK {token}"
             case [op] if op.startswith("F") and len(op) == 73:

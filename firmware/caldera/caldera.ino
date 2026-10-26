@@ -13,7 +13,7 @@ EverydayCalendar_touch cal_touch;
 EverydayCalendar_lights cal_lights;
 int16_t brightness = 128;
 
-static const uint8_t PROTOCOL_VERSION = 2;
+static const uint8_t PROTOCOL_VERSION = 3;
 #ifndef BAUD
 #define BAUD 250000 // exact divider for the 8MHz AVR and the FT232R; 500000 overruns
 #endif
@@ -69,6 +69,8 @@ void loop() {
   }
 
   bool touch = cal_touch.x != -1;
+  bool onDay = touch && cal_touch.y < 31;
+  reportContact(onDay ? cal_touch.x : -1, onDay ? cal_touch.y : -1);
   // Handle a button press
   if(touch)
   {
@@ -129,6 +131,27 @@ void reportTouch(int8_t x, int8_t y){
   }else if(x == 6){
     Serial.println(F("EV B BRIGHT"));
   }
+}
+
+// Raw contact, every scan: EV D on each new day pad, EV U on release. Host mode only.
+void reportContact(int8_t x, int8_t y){
+  static int8_t lastX = -1, lastY = -1;
+  if(x == lastX && y == lastY){
+    return;
+  }
+  lastX = x;
+  lastY = y;
+  if(!hostMode){
+    return;
+  }
+  if(x < 0){
+    Serial.println(F("EV U"));
+    return;
+  }
+  Serial.print(F("EV D "));
+  Serial.print(x);
+  Serial.print(' ');
+  Serial.println(y);
 }
 
 void pollSerial(){

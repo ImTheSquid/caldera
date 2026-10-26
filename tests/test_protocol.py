@@ -6,7 +6,9 @@ from caldera.protocol import (
     MAX_LINE,
     BrightnessButton,
     CalendarError,
+    Contact,
     Frame,
+    Release,
     Touch,
     encode_brightness,
     encode_frame,
@@ -76,6 +78,8 @@ def test_parse_frame_round_trip():
 def test_parse_event():
     assert parse_event("EV T 2 13") == Touch(3, 14)
     assert parse_event("EV B DIM") == BrightnessButton("DIM")
+    assert parse_event("EV D 11 30") == Contact(12, 31)
+    assert parse_event("EV U") == Release()
     with pytest.raises(CalendarError):
         parse_event("EV X")
 
