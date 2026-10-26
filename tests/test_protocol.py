@@ -9,8 +9,8 @@ from caldera.protocol import (
     Frame,
     Touch,
     encode_brightness,
+    encode_frame,
     encode_set,
-    encode_write,
     index,
     parse_event,
     parse_frame,
@@ -49,12 +49,6 @@ def test_encode_set():
     assert encode_set((3, 14), False) == "SET 2 13 0"
 
 
-def test_encode_write_fits_rx_buffer():
-    lines = encode_write(Frame([0x7FFFFFFF] * 12))
-    assert [l.split()[:2] for l in lines] == [["W", "0"], ["W", "6"]]
-    assert all(len(l) < MAX_LINE for l in lines)
-
-
 def test_encode_brightness_range():
     assert encode_brightness(200) == "BRI 200"
     with pytest.raises(ValueError):
@@ -84,3 +78,13 @@ def test_parse_event():
     assert parse_event("EV B DIM") == BrightnessButton("DIM")
     with pytest.raises(CalendarError):
         parse_event("EV X")
+
+
+def test_encode_frame_layout():
+    f = Frame()
+    f[1, 1] = True  # January bit 0: last char of month 0
+    f[12, 31] = True  # December bit 30: first char of month 11
+    line = encode_frame(f)
+    assert len(line) == 73 and len(line) <= MAX_LINE
+    assert line[6] == "1" and line[67] == "1"
+    assert line.count("0") == 70

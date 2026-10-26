@@ -32,14 +32,22 @@ with Calendar() as cal:
             time.sleep(0.1)
         assert cal.brightness == level
 
-        frames = [Frame([0x7FFFFFFF if (m + i) % 2 else 0 for m in range(12)]) for i in range(2)]
-        dts = []
-        for i in range(100):
-            t = time.monotonic()
-            cal.write(frames[i % 2])
-            dts.append(time.monotonic() - t)
-        fps = [1 / dt for dt in dts]
-        print(f"full-frame write: {statistics.mean(fps):.1f} ± {statistics.stdev(fps):.1f} fps")
+        rtts = []
+        for _ in range(200):
+            t = time.perf_counter()
+            cal.ping()
+            rtts.append((time.perf_counter() - t) * 1e3)
+        print(f"ping round trip: {statistics.mean(rtts):.2f} ± {statistics.stdev(rtts):.2f} ms")
+
+        frames = [Frame([(i * 0x9E3779B1 + m * 0x5BD1E995) & 0x7FFFFFFF for m in range(12)]) for i in range(64)]
+        n = 3000
+        t = time.perf_counter()
+        for i in range(n):
+            cal.write(frames[i % len(frames)])
+        cal.flush()
+        dt = time.perf_counter() - t
+        print(f"streamed {n} frames in {dt:.2f}s: {n / dt:.0f} fps")
+        assert cal.read() == frames[(n - 1) % len(frames)], "last streamed frame not displayed"
 
         if "--touch" in sys.argv:
             cal.write(original)

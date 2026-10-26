@@ -4,7 +4,7 @@ import queue
 
 
 class FakeDevice:
-    def __init__(self, banner: str = "READY EDC 1"):
+    def __init__(self, banner: str = "READY EDC 2"):
         self.out: queue.Queue[bytes] = queue.Queue()
         self.leds = [0] * 12
         self.saved = [0] * 12
@@ -12,6 +12,8 @@ class FakeDevice:
         self.mode = "L"
         self.received: list[str] = []
         self.mute = False
+        self.stall = 0  # hold replies to this many writes until the next one
+        self.held: list[str] = []
         self.emit("# setup started", banner)
 
     def emit(self, *lines: str) -> None:
@@ -27,8 +29,15 @@ class FakeDevice:
     def write(self, data: bytes) -> int:
         line = data.decode().strip()
         self.received.append(line)
-        if not self.mute:
-            self.emit(self.handle(line.split()))
+        reply = self.handle(line.split())
+        if self.mute:
+            return len(data)
+        if self.stall:
+            self.stall -= 1
+            self.held.append(reply)
+            return len(data)
+        self.emit(*self.held, reply)
+        self.held.clear()
         return len(data)
 
     def close(self) -> None:
@@ -37,7 +46,13 @@ class FakeDevice:
     def handle(self, args: list[str]) -> str:
         match args:
             case ["PING"]:
-                return "OK EDC 1"
+                return "OK EDC 2"
+            case ["PING", token]:
+                return f"OK {token}"
+            case [op] if op.startswith("F") and len(op) == 73:
+                chars = [ord(c) - 0x30 for c in op[1:]]
+                self.leds = [sum(v << (6 * (5 - i)) for i, v in enumerate(chars[6 * m : 6 * m + 6])) for m in range(12)]
+                return "OK"
             case ["GET"]:
                 return "OK " + " ".join(f"{w:X}" for w in self.leds)
             case ["SET", m, d, on]:

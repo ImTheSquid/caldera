@@ -13,16 +13,19 @@ EverydayCalendar_touch cal_touch;
 EverydayCalendar_lights cal_lights;
 int16_t brightness = 128;
 
-static const uint8_t PROTOCOL_VERSION = 1;
-static const uint8_t LINE_MAX = 60; // must fit the 64 byte RX buffer
+static const uint8_t PROTOCOL_VERSION = 2;
+#ifndef BAUD
+#define BAUD 250000 // exact divider for the 8MHz AVR and the FT232R; 500000 overruns
+#endif
+static const uint8_t LINE_MAX = 80;
 static char line[LINE_MAX + 1];
 static uint8_t lineLen = 0;
 static bool lineOverflow = false;
 static bool hostMode = false; // touches are reported only, never acted on
 
 void setup() {
-  Serial.begin(38400);
-  Serial.println("# setup started");
+  Serial.begin(BAUD);
+  Serial.println(F("# setup started"));
 
   // Initialize LED functionality
   cal_lights.configure();
@@ -50,7 +53,7 @@ void setup() {
     delay(4);
   }
 
-  Serial.print("READY EDC ");
+  Serial.print(F("READY EDC "));
   Serial.println(PROTOCOL_VERSION);
 }
 
@@ -61,8 +64,11 @@ void loop() {
   static const uint16_t clearCalendarCount = 1300; // ~40 seconds.  This is in units of touch sampling interval ~= 30ms.
 
   pollSerial();
+  if(!cal_touch.poll()){
+    return;
+  }
 
-  bool touch = cal_touch.scanForTouch();
+  bool touch = cal_touch.x != -1;
   // Handle a button press
   if(touch)
   {
@@ -98,7 +104,7 @@ void loop() {
 
       // Check if the special "Reset" January 1 button is being held
       if(!hostMode && (cal_touch.x == 0) && (cal_touch.y == 0) && (touchCount == clearCalendarCount)){
-        Serial.println("# resetting all LED states");
+        Serial.println(F("# resetting all LED states"));
         clearAnimation();
       }
 
@@ -114,14 +120,14 @@ void loop() {
 
 void reportTouch(int8_t x, int8_t y){
   if(y < 31){
-    Serial.print("EV T ");
+    Serial.print(F("EV T "));
     Serial.print(x);
     Serial.print(' ');
     Serial.println(y);
   }else if(x == 4){
-    Serial.println("EV B DIM");
+    Serial.println(F("EV B DIM"));
   }else if(x == 6){
-    Serial.println("EV B BRIGHT");
+    Serial.println(F("EV B BRIGHT"));
   }
 }
 
@@ -134,12 +140,13 @@ void pollSerial(){
     if(c == '\n'){
       line[lineLen] = '\0';
       if(lineOverflow){
-        Serial.println("ERR line too long");
+        Serial.println(F("ERR line too long"));
       }else if(lineLen > 0){
         handleCommand(line);
       }
       lineLen = 0;
       lineOverflow = false;
+      return; // one line per loop so touch scanning keeps running
     }else if(lineLen < LINE_MAX){
       line[lineLen++] = c;
     }else{
@@ -159,15 +166,20 @@ long nextInt(long lo, long hi){
   return (*end == '\0' && v >= lo && v <= hi) ? v : -1;
 }
 
-// Next token as a day bitmask, false if invalid
-bool nextHex(uint32_t* out){
-  char* tok = strtok(NULL, " ");
-  if(tok == NULL){
-    return false;
+// Each month is 6 chars of '0' + 6 bits, most significant first
+bool decodeFrame(const char* s, uint32_t* days){
+  for(uint8_t m = 0; m < 12; m++){
+    uint32_t w = 0;
+    for(uint8_t i = 0; i < 6; i++){
+      uint8_t v = *s++ - '0';
+      if(v > (i == 0 ? 1 : 63)){ // day 31 is bit 30, so the first char holds one bit
+        return false;
+      }
+      w = (w << 6) | v;
+    }
+    days[m] = w;
   }
-  char* end;
-  *out = strtoul(tok, &end, 16);
-  return *end == '\0' && *out <= 0x7FFFFFFF;
+  return *s == '\0';
 }
 
 bool noMoreArgs(){
@@ -175,11 +187,11 @@ bool noMoreArgs(){
 }
 
 void ok(){
-  Serial.println("OK");
+  Serial.println(F("OK"));
 }
 
-void err(const char* reason){
-  Serial.print("ERR ");
+void err(const __FlashStringHelper* reason){
+  Serial.print(F("ERR "));
   Serial.println(reason);
 }
 
@@ -187,10 +199,25 @@ void handleCommand(char* cmd){
   char* op = strtok(cmd, " ");
 
   if(!strcmp(op, "PING")){
-    Serial.print("OK EDC ");
-    Serial.println(PROTOCOL_VERSION);
+    char* token = strtok(NULL, " ");
+    if(token != NULL){
+      Serial.print(F("OK "));
+      Serial.println(token);
+    }else{
+      Serial.print(F("OK EDC "));
+      Serial.println(PROTOCOL_VERSION);
+    }
+  }else if(op[0] == 'F' && op[1] != '\0'){
+    uint32_t days[12];
+    if(!decodeFrame(op + 1, days) || !noMoreArgs()){
+      return err(F("usage: F<72 chars>"));
+    }
+    for(uint8_t m = 0; m < 12; m++){
+      cal_lights.setMonth(m, days[m]);
+    }
+    ok();
   }else if(!strcmp(op, "GET")){
-    Serial.print("OK");
+    Serial.print(F("OK"));
     for(uint8_t m = 0; m < 12; m++){
       Serial.print(' ');
       Serial.print(cal_lights.getMonth(m), HEX);
@@ -201,27 +228,13 @@ void handleCommand(char* cmd){
     long d = nextInt(0, 30);
     long on = nextInt(0, 1);
     if(m < 0 || d < 0 || on < 0 || !noMoreArgs()){
-      return err("usage: SET month day 0|1");
+      return err(F("usage: SET month day 0|1"));
     }
     cal_lights.setLED(m, d, on);
     ok();
-  }else if(!strcmp(op, "W")){
-    long start = nextInt(0, 11);
-    uint32_t days[12];
-    uint8_t count = 0;
-    while(start >= 0 && start + count < 12 && nextHex(&days[count])){
-      count++;
-    }
-    if(start < 0 || count == 0 || !noMoreArgs()){
-      return err("usage: W month hex...");
-    }
-    for(uint8_t i = 0; i < count; i++){
-      cal_lights.setMonth(start + i, days[i]);
-    }
-    ok();
   }else if(!strcmp(op, "CLR")){
     if(!noMoreArgs()){
-      return err("usage: CLR");
+      return err(F("usage: CLR"));
     }
     cal_lights.clearAllLEDs();
     ok();
@@ -231,12 +244,12 @@ void handleCommand(char* cmd){
       char* end;
       long b = strtol(tok, &end, 10);
       if(*end != '\0' || b < 0 || b > 200 || !noMoreArgs()){
-        return err("usage: BRI [0-200]");
+        return err(F("usage: BRI [0-200]"));
       }
       brightness = b;
       cal_lights.setBrightness((uint8_t)brightness);
     }
-    Serial.print("OK ");
+    Serial.print(F("OK "));
     Serial.println(brightness);
   }else if(!strcmp(op, "SAVE")){
     cal_lights.saveLedStatesToMemory();
@@ -248,13 +261,13 @@ void handleCommand(char* cmd){
     char* tok = strtok(NULL, " ");
     if(tok != NULL){
       if((strcmp(tok, "L") && strcmp(tok, "H")) || !noMoreArgs()){
-        return err("usage: MODE [L|H]");
+        return err(F("usage: MODE [L|H]"));
       }
       hostMode = tok[0] == 'H';
     }
     Serial.println(hostMode ? "OK H" : "OK L");
   }else{
-    err("unknown command");
+    err(F("unknown command"));
   }
 }
 

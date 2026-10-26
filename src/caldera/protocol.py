@@ -9,11 +9,11 @@ from dataclasses import dataclass
 from datetime import date
 from enum import Enum
 
-VERSION = 1
-BAUD = 38400
-MAX_LINE = 60  # firmware RX buffer is 64 bytes
+VERSION = 2
+BAUD = 250000
+MAX_LINE = 80  # firmware line buffer, excluding the newline
+WINDOW = 500  # unacknowledged bytes in flight; firmware RX buffer is 512
 MAX_BRIGHTNESS = 200
-WORDS_PER_WRITE = 6
 DAYS_IN_MONTH = (31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
 
 Key = tuple[int, int] | date
@@ -98,11 +98,9 @@ def encode_set(key: Key, on: bool) -> str:
     return f"SET {m} {d} {int(bool(on))}"
 
 
-def encode_write(frame: Frame) -> list[str]:
-    return [
-        f"W {start} " + " ".join(f"{w:08x}" for w in frame.words[start : start + WORDS_PER_WRITE])
-        for start in range(0, 12, WORDS_PER_WRITE)
-    ]
+def encode_frame(frame: Frame) -> str:
+    """Each month as 6 chars of '0' + 6 bits, most significant first."""
+    return "F" + "".join(chr(0x30 + (w >> s & 0x3F)) for w in frame.words for s in range(30, -1, -6))
 
 
 def encode_brightness(level: int) -> str:

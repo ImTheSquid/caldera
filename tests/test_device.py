@@ -1,5 +1,3 @@
-import time
-
 import pytest
 
 from caldera import BrightnessButton, Calendar, CalendarError, Frame, Mode, Touch
@@ -63,14 +61,41 @@ def test_reply_timeout(cal, dev):
         cal.ping()
 
 
-def test_late_reply_is_not_misattributed(cal, dev):
-    dev.mute = True
+def test_late_reply_is_dropped_by_resync(cal, dev):
+    dev.stall = 1
     with pytest.raises(TimeoutError):
         cal.command("BRI")
-    dev.emit("OK 128")  # the late reply to BRI
-    dev.mute = False
-    time.sleep(0.05)
+    assert dev.received[-1].startswith("PING ")
     assert cal.command("MODE") == "L"
+
+
+def test_pipelined_frames(cal, dev):
+    frames = [Frame([(i * 0x9E3779B1 + m) & 0x7FFFFFFF for m in range(12)]) for i in range(100)]
+    for f in frames:
+        cal.write(f)
+    cal.flush()
+    assert cal.read() == frames[-1]
+    assert sum(r.startswith("F") for r in dev.received) == 100
+
+
+def test_deferred_error_surfaces_on_next_call(cal):
+    cal.send("BOGUS")
+    with pytest.raises(CalendarError, match="BOGUS"):
+        cal.ping()
+    cal.ping()
+
+
+def test_deferred_error_surfaces_on_flush(cal):
+    cal.send("BOGUS")
+    with pytest.raises(CalendarError, match="BOGUS"):
+        cal.flush()
+
+
+def test_window_stall_times_out(cal, dev):
+    dev.mute = True
+    with pytest.raises(TimeoutError):
+        for _ in range(10):
+            cal.write(Frame())
 
 
 def test_lines_before_banner_are_ignored():
@@ -81,8 +106,8 @@ def test_lines_before_banner_are_ignored():
 
 
 def test_version_mismatch():
-    with pytest.raises(CalendarError, match="protocol 2"):
-        Calendar(stream=FakeDevice(banner="READY EDC 2"), boot_timeout=1)
+    with pytest.raises(CalendarError, match="protocol 1"):
+        Calendar(stream=FakeDevice(banner="READY EDC 1"), boot_timeout=1)
 
 
 def test_missing_banner():

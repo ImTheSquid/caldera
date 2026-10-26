@@ -7,7 +7,7 @@ AVRDUDE := avrdude -c arduino -p m328p -b 57600 -P $(PORT)
 .PHONY: build flash backup test
 
 build:
-	arduino-cli compile -b $(FQBN) --libraries firmware/libraries --output-dir $(BUILD) $(SKETCH)
+	arduino-cli compile --clean -b $(FQBN) --build-property "compiler.cpp.extra_flags=-DSERIAL_RX_BUFFER_SIZE=512 $(EXTRA)" --libraries firmware/libraries --output-dir $(BUILD) $(SKETCH)
 
 flash: build
 	$(AVRDUDE) -U flash:w:$(BUILD)/caldera.ino.hex:i
