@@ -58,6 +58,26 @@ void EverydayCalendar_lights::setLED(uint8_t month, uint8_t day, bool enable){
   }
 }
 
+uint32_t EverydayCalendar_lights::getMonth(uint8_t month){
+  if (month > 11){
+    return 0;
+  }
+  noInterrupts();
+  uint32_t days = ledValues[month];
+  interrupts();
+  return days;
+}
+
+// Bit d of days is day d, in range [0,30]
+void EverydayCalendar_lights::setMonth(uint8_t month, uint32_t days){
+  if (month > 11){
+    return;
+  }
+  noInterrupts();
+  ledValues[month] = days & 0x7FFFFFFF;
+  interrupts();
+}
+
 void EverydayCalendar_lights::toggleLED(uint8_t month, uint8_t day){
    bool ledState = (*(ledValues+month) & ((uint32_t)1 << (day)));
    setLED(month, day, !ledState);
@@ -84,13 +104,6 @@ void EverydayCalendar_lights::loadLedStatesFromMemory(){
   // Load calendar from memory
   for(int i=0; i<sizeof(ledValues); i++){
     *((byte*)ledValues + i) = EEPROM.read(EEPROM_START_ADR + i);
-  }
-
-  for(int i=0; i<12; i++){
-    Serial.print("LED Column ");
-    Serial.print(i);
-    Serial.print(" = ");
-    Serial.println(ledValues[i]);
   }
 }
 

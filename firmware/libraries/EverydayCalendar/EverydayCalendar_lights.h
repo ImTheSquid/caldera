@@ -12,6 +12,8 @@ public:
 	void saveLedStatesToMemory();
 
 	void setLED(uint8_t month, uint8_t day, bool enable);
+	uint32_t getMonth(uint8_t month);
+	void setMonth(uint8_t month, uint32_t days);
 	void toggleLED(uint8_t month, uint8_t day);
 	void clearAllLEDs();
 	void setBrightness(uint8_t brightness);
