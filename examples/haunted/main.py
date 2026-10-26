@@ -6,7 +6,8 @@ Poke an imp to burst it. Draw letters one at a time anywhere on the glass; each
 is read 1s after you lift and flashed back. Moon deletes the last letter (or
 cancels), sun sends, and 6s of stillness also sends. The demon's reply scrolls
 across the mirror. --keyboard takes typed lines instead of drawing.
-Needs `ollama serve` and a model from train.py. Runs in host mode and never
+Needs `OLLAMA_CONTEXT_LENGTH=2048 ollama serve` (the default context can take
+many GB) and a model from train.py. Runs in host mode and never
 saves, so the real calendar returns on Ctrl-C.
 """
 
