@@ -21,6 +21,7 @@ static uint32_t ledValues[12] = {0}; // Months are the integers in range [0,11],
 void EverydayCalendar_lights::configure(){
   // LED configurations
   SPI.begin();
+  SPI.beginTransaction(spiSettings); // held for good; the LED ISR is the only SPI user
   pinMode (csPin, OUTPUT);
   digitalWrite (csPin, HIGH);
   pinMode (tickle_pin, OUTPUT);
@@ -125,36 +126,43 @@ void EverydayCalendar_lights::setBrightness(uint8_t b){
 // Code to drive the LED multiplexing.
 // This code is called at a very fast period, activating each LED column one by one
 // This is done faster than the eye can perceive, and it appears that all twelve columns are illuminated at once.
+// Pins 8, 9 and 10 are PB0, PB1 and PB2. Direct port and SPI register access
+// keeps these ISRs short so they don't starve UART receive at high baud rates.
+static const uint8_t outputEnableBit = _BV(PB0);
+static const uint8_t tickleBit = _BV(PB1);
+static const uint8_t csBit = _BV(PB2);
+
+static inline void spiSend(uint8_t b){
+  SPDR = b;
+  while(!(SPSR & _BV(SPIF)));
+}
+
 ISR(TIMER2_COMPA_vect) {
-  digitalWrite(outputEnablePin, LOW); // Enable
+  PORTB &= ~outputEnableBit; // Enable
 }
 ISR(TIMER2_OVF_vect) {
-    static uint16_t activeColumn = 0;
-    static byte spiBuf[6];
+    static uint8_t activeColumn = 0;
 
-    digitalWrite(outputEnablePin, HIGH); // Disable
+    PORTB |= outputEnableBit; // Disable
 
     OCR2A = brightness;
 
     // "Tickle" the watchdog circuit to keep the LEDs enabled
-    digitalWrite(tickle_pin, !digitalRead(tickle_pin));
+    PINB = tickleBit; // writing 1 to a PINx bit toggles the pin
 
     // update the next column
     uint16_t month = (1 << activeColumn);
     uint8_t * pDays = (uint8_t*) (ledValues + activeColumn);
 
     // Send the LED control values into the shift registers
-    digitalWrite (csPin, LOW);
-    SPI.beginTransaction(spiSettings);
-    memcpy(spiBuf, &month, 2);
-    spiBuf[2] = pDays[3];
-    spiBuf[3] = pDays[2];
-    spiBuf[4] = pDays[1];
-    spiBuf[5] = pDays[0];
-    SPI.transfer(spiBuf, sizeof(spiBuf));
-    SPI.endTransaction();
-    digitalWrite (csPin, HIGH);
+    PORTB &= ~csBit;
+    spiSend(month & 0xFF);
+    spiSend(month >> 8);
+    spiSend(pDays[3]);
+    spiSend(pDays[2]);
+    spiSend(pDays[1]);
+    spiSend(pDays[0]);
+    PORTB |= csBit;
 
-    activeColumn++;
-    activeColumn %= 12;
+    activeColumn = (activeColumn == 11) ? 0 : activeColumn + 1;
 }
