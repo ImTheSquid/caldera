@@ -11,11 +11,18 @@ from font import CHARSET
 URL = "http://localhost:11434/v1/chat/completions"  # Ollama's OpenAI-compatible endpoint
 MODEL = "llama3.2:3b"
 SYSTEM = (
-    "You are a demon trapped in a haunted mirror on Halloween night. "
-    "A mortal has written to you on the glass. Reply with one short, menacing, playful sentence "
-    "of at most ten words. Plain words only: no emoji, no lists, no quotation marks."
+    "You are a demon trapped in a haunted mirror on Halloween night. A mortal writes to you on the glass "
+    "with a finger, in capitals, maybe with missing spaces or a wrong letter. Reply directly to what they wrote, "
+    "the way someone in a conversation would: answer their question or react to what they said, "
+    "with a sinister, playful twist. One sentence, at most twelve words. No emoji, lists or quotation marks."
 )
-CAP = 60  # characters shown, cut at a word boundary
+# Example exchanges; small models follow these far better than the instructions alone
+SHOTS = [
+    ("HI", "Hello there. Come closer to the glass, I won't bite."),
+    ("HOWAREYOU", "Starving, thanks for asking. Are you offering?"),
+    ("DO YOU LIKE DOGS", "Love them. They always bark when I stand behind you."),
+]
+CAP = 80  # characters shown, cut at a word boundary
 FALLBACK = "THE MIRROR IS SILENT..."
 TIMEOUT = 20.0
 
@@ -32,8 +39,12 @@ def deltas(message: str, model: str, url: str):
         "model": model,
         "stream": True,
         "max_tokens": 48,
-        "temperature": 0.9,
-        "messages": [{"role": "system", "content": SYSTEM}, {"role": "user", "content": message}],
+        "temperature": 0.7,
+        "messages": [
+            {"role": "system", "content": SYSTEM},
+            *({"role": r, "content": c} for u, a in SHOTS for r, c in (("user", u), ("assistant", a))),
+            {"role": "user", "content": message},
+        ],
     }
     req = urllib.request.Request(url, json.dumps(body).encode(), {"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
@@ -62,7 +73,8 @@ def ask(message: str, out: queue.Queue, model: str = MODEL, url: str = URL) -> t
                 for word in words:
                     if not word:
                         continue
-                    if sent + len(word) > CAP:
+                    if sent + len(word) + 3 > CAP:
+                        out.put("...")
                         return
                     out.put(("" if not sent else " ") + word)
                     sent += len(word) + 1

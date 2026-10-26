@@ -161,13 +161,15 @@ def reply(server, message):
 def test_oracle_streams_cleaned_reply(llm):
     llm.reply = "Your soul smells delicious, mortal."
     assert reply(llm, "HI") == "YOUR SOUL SMELLS DELICIOUS, MORTAL."
-    assert llm.requests[0]["stream"] and llm.requests[0]["messages"][-1]["content"] == "HI"
+    messages = llm.requests[0]["messages"]
+    assert llm.requests[0]["stream"] and messages[-1] == {"role": "user", "content": "HI"}
+    assert [m["role"] for m in messages[:3]] == ["system", "user", "assistant"]
 
 
 def test_oracle_caps_at_word_boundary(llm):
     llm.reply = "doom " * 30
     text = reply(llm, "HI")
-    assert len(text) <= CAP and text.endswith("DOOM")
+    assert len(text) <= CAP and text.endswith("DOOM...")
 
 
 def test_oracle_falls_back_when_unreachable():
