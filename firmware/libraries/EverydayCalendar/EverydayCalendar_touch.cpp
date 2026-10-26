@@ -97,31 +97,42 @@ void EverydayCalendar_touch::begin(){
   }
 }
 
-// This whole procedure should take about 100 milliseconds
+// A full scan takes about 100 milliseconds
 bool EverydayCalendar_touch::scanForTouch(){
-  // Wait until all touch controllers are ready
-  for(int i=0; i<4; i++){
-    if(controllersEnabled[i] == false){ continue; }
-    if(tc[i].isReady() == false){
-      i=0; // One of the controllers isn't ready. Start again from the top.
-      continue;
+  while(!poll());
+  return x != -1;
+}
+
+// Advances the scan without blocking on the controllers' ready signals.
+// Returns true once a scan completes, with x and y set (-1 if untouched).
+bool EverydayCalendar_touch::poll(){
+  if(scanIndex < 0){
+    for(int i=0; i<4; i++){
+      if(controllersEnabled[i] && !tc[i].isReady()){ return false; }
     }
+    scanIndex = 0;
+    sessionEnded = false;
   }
 
-  for(int i=0; i<4; i++){
-    if(controllersEnabled[i] == false){ continue; }
-    // Close session for controller
-    tc[i].endSession();
-    // Initiates a reading
-    while(tc[i].isReady() == false);
-    tc[i].readTouch();
-    if(tc[i].atiErrorDetected()){
-      Serial.print(" ATI Error! \tDevice Address: 0x");
-      Serial.println(tcAddresses[i],16);
+  for(; scanIndex<4; scanIndex++){
+    if(controllersEnabled[scanIndex] == false){ continue; }
+    if(!sessionEnded){
+      // Close session for controller, which initiates a reading
+      tc[scanIndex].endSessionNoWait();
+      sessionEndedAt = micros();
+      sessionEnded = true;
+    }
+    if(micros() - sessionEndedAt < 1000 || tc[scanIndex].isReady() == false){ return false; }
+    tc[scanIndex].readTouch();
+    if(tc[scanIndex].atiErrorDetected()){
+      Serial.print("# ATI Error! \tDevice Address: 0x");
+      Serial.println(tcAddresses[scanIndex],16);
     }
     // Do not close the session.  Leave the controller hanging,
     // so it isn't sampling at the same time as others
+    sessionEnded = false;
   }
+  scanIndex = -1;
 
   x = -1;
   y = -1;
@@ -131,10 +142,10 @@ bool EverydayCalendar_touch::scanForTouch(){
     if(tc[i].isTouched()){
       x = tc[i].x;
       y = tc[i].y + (10*i);
-      return true;
+      break;
     }
   }
-  return false;
+  return true;
 }
 
 void _printChannelValues(EverydayCalendar_touch * const cal_touch, fxn_getChannelValue getter_fxn){

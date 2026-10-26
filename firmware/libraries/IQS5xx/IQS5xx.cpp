@@ -378,8 +378,14 @@ void IQS::readTxAtiCompensation(uint8_t txChannel, uint8_t compensations[10]){
 //*****************************************************************************
 void IQS::endSession()
 {
-  IQS5xx_I2C_Write(i2cDeviceAddr, (uint16_t)EndWindow_adr, 0, 1);
+  endSessionNoWait();
   IQS5xx_delay(1);
+}
+
+// The ready signal is stale for about 1ms after this returns
+void IQS::endSessionNoWait()
+{
+  IQS5xx_I2C_Write(i2cDeviceAddr, (uint16_t)EndWindow_adr, 0, 1);
 }
 
 //*****************************************************************************

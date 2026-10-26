@@ -348,6 +348,7 @@ public:
 	void holdReset(bool held);
 	bool isReady();
   void endSession();
+  void endSessionNoWait();
   void acknowledgeReset();
 	bool checkVersion(IQS_Version* pVersion);
 
