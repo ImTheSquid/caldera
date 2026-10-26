@@ -1,7 +1,7 @@
 """Draw animations on the calendar frame by frame, then play them back from here.
 
     uv run examples/animate.py edit NAME [--fps 8]
-    uv run examples/animate.py play NAME [--fps N] [--loop]
+    uv run examples/animate.py play NAME [--fps N] [--loop] [--audio FILE]
     uv run examples/animate.py list
 
 edit: tap a pad to toggle it, or drag to paint (the first pad decides on or
@@ -10,10 +10,13 @@ last stroke, or with none left, takes the last stored frame back for editing.
 Every store saves animations/NAME.json; Ctrl-C saves too. Editing an existing
 name continues after its last frame. Both modes run in host mode and never
 touch the saved calendar.
+
+play --audio: FILE is played on the host with afplay, restarting each loop.
 """
 
 import argparse
 import json
+import subprocess
 import time
 from pathlib import Path
 
@@ -131,14 +134,18 @@ def edit(cal: Calendar, name: str, fps: float | None) -> None:
     print(f"saved {len(frames)} frames to {path(name)}")
 
 
-def play(cal: Calendar, name: str, fps: float | None, loop: bool) -> None:
+def play(cal: Calendar, name: str, fps: float | None, loop: bool, audio: Path | None = None) -> None:
     frames, stored_fps = load(name)
     if not frames:
         raise SystemExit(f"no animation {name!r} in {DIR}")
     period = 1 / (fps or stored_fps)
+    sound: subprocess.Popen[bytes] | None = None
     tick = time.perf_counter()
     try:
         while True:
+            if audio:
+                sound = subprocess.Popen(["afplay", str(audio)])
+                tick = time.perf_counter()
             for frame in frames:
                 cal.write(frame)
                 tick = max(tick + period, time.perf_counter())  # never catch up in a burst
@@ -147,6 +154,9 @@ def play(cal: Calendar, name: str, fps: float | None, loop: bool) -> None:
                 break
     except KeyboardInterrupt:
         pass
+    finally:
+        if sound and sound.poll() is None:
+            sound.terminate()
 
 
 def main() -> None:
@@ -157,6 +167,7 @@ def main() -> None:
         p.add_argument("name")
         p.add_argument("--fps", type=float)
     sub.choices["play"].add_argument("--loop", action="store_true")
+    sub.choices["play"].add_argument("--audio", type=Path, help="sound file to play alongside")
     sub.add_parser("list")
     args = parser.parse_args()
 
@@ -166,6 +177,8 @@ def main() -> None:
             print(f"{p.stem}: {len(data['frames'])} frames at {data['fps']:g} fps")
         return
     path(args.name)  # reject a bad name before the 7s boot
+    if args.cmd == "play" and args.audio and not args.audio.is_file():
+        raise SystemExit(f"no audio file {args.audio}")
     with Calendar() as cal:
         original = cal.read()
         cal.mode = Mode.HOST
@@ -173,7 +186,7 @@ def main() -> None:
             if args.cmd == "edit":
                 edit(cal, args.name, args.fps)
             else:
-                play(cal, args.name, args.fps, args.loop)
+                play(cal, args.name, args.fps, args.loop, args.audio)
         finally:
             cal.write(original)
             cal.mode = Mode.LOCAL
