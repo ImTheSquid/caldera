@@ -8,10 +8,10 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
-from demons import Horde
-from font import Marquee, columns, glyph
+from demons import ROAM, Horde
+from font import ROWS, Marquee, columns, glyph
 from ink import Ink, physical, rasterize
-from main import Mirror
+from main import LURK, Mirror
 from oracle import CAP, FALLBACK, ask, clean
 from recognize import train
 from scene import VALID
@@ -23,8 +23,26 @@ def test_imps_stay_on_pads():
         now = i / 50
         horde.step(now, 1 / 50)
         if i % 300 == 0:
-            horde.band = (1, 5) if horde.band != (1, 5) else (1, 26)
+            horde.bands = LURK if horde.bands == ROAM else ROAM
         assert set(horde.pads(now)) <= VALID
+
+
+def test_lurking_imps_clear_the_text_band():
+    horde = Horde(4, random.Random(4))
+    horde.bands = LURK
+    for i in range(500):
+        horde.step(i / 50, 1 / 50)
+    for i in range(500, 3000):
+        now = i / 50
+        horde.step(now, 1 / 50)
+        assert not [p for imp in horde.imps if imp.respawn_at is None for p in imp.cells(now) if p[1] in ROWS]
+
+
+def test_sprite_is_three_columns_wide():
+    imp = Horde(1, random.Random(5)).imps[0]
+    m, d = imp.head
+    assert {c[0] for c in imp.cells(0.0)} == {m - 1, m, m + 1}
+    assert {c[1] for c in imp.cells(0.0)} == set(range(d, d + 5))
 
 
 def test_poke_bursts_imp_and_respawns():

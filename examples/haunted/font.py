@@ -49,6 +49,7 @@ GLYPHS = {
 }
 CHARSET = frozenset(GLYPHS)
 TOP = 9  # first day row of the text band
+ROWS = range(TOP, TOP + 10)  # day rows the text band covers
 SCROLL = 6.0  # columns per second
 
 

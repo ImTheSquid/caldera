@@ -19,8 +19,8 @@ import time
 
 from caldera import BrightnessButton, Calendar, Contact, Mode, Release
 from caldera.protocol import MAX_BRIGHTNESS
-from demons import BAND, Horde
-from font import Marquee, glyph
+from demons import HEIGHT, LOWEST, ROAM, Horde
+from font import ROWS, Marquee, glyph
 from ink import Ink
 from oracle import MODEL, URL, ask, clean
 from recognize import Model
@@ -32,7 +32,7 @@ BRIGHTNESS_STEP = 20
 INK_START = 3  # distinct pads a stroke crosses before it is writing rather than a poke
 FLASH = 0.6  # seconds a recognized letter is shown
 AUTO_SEND = 6.0
-LURK = (1, 5)  # imp rows while the demon speaks, above the text band
+LURK = [(1, ROWS.start - HEIGHT), (ROWS.stop, LOWEST)]  # imp head rows that clear the text band
 
 
 class Mirror:
@@ -98,7 +98,7 @@ class Mirror:
         self.marquee = Marquee()
         self.replies = queue.Queue()
         ask(message, self.replies, self.model, self.url)
-        self.horde.band = LURK
+        self.horde.bands = LURK
 
     def idle(self) -> None:
         self.state = "idle"
@@ -106,7 +106,7 @@ class Mirror:
         self.ink.take()
         self.marquee = None
         self.horde.visible = True
-        self.horde.band = BAND
+        self.horde.bands = ROAM
 
     def step(self, now: float, dt: float) -> None:
         if self.state == "writing":
@@ -134,7 +134,10 @@ class Mirror:
             if self.flash and now < self.flash[1]:
                 return glyph(self.flash[0])
             return list(self.ink.pads())
-        return self.horde.pads(now) + (self.marquee.pads() if self.marquee else [])
+        if not self.marquee:
+            return self.horde.pads(now)
+        # Imps still running for cover, and bursts, never draw over the text
+        return [p for p in self.horde.pads(now) if p[1] not in ROWS] + self.marquee.pads()
 
 
 def typed() -> queue.Queue:
@@ -172,7 +175,7 @@ def play(cal: Calendar, mirror: Mirror, lines: queue.Queue | None) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--imps", type=int, default=5)
+    parser.add_argument("--imps", type=int, default=4)
     parser.add_argument("--keyboard", action="store_true", help="type messages instead of drawing them")
     parser.add_argument("--model", default=MODEL, help="LLM name for the endpoint")
     parser.add_argument("--url", default=URL, help="OpenAI-compatible chat completions URL")
