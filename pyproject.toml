@@ -17,4 +17,4 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.pytest.ini_options]
-pythonpath = ["tests", "examples/haunted"]
+pythonpath = ["tests", "examples", "examples/haunted"]
