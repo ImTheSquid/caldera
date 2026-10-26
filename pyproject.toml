@@ -7,6 +7,10 @@ dependencies = ["pyserial>=3.5"]
 
 [dependency-groups]
 dev = ["pytest>=8"]
+haunted = ["numpy>=2"]
+
+[tool.uv]
+default-groups = ["dev", "haunted"]
 
 [build-system]
 requires = ["hatchling"]
